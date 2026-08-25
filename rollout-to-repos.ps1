@@ -60,6 +60,26 @@ function Test-EvaService([string]$path) {
     return ($hasBusiness -and $hasData)
 }
 
+# PowerShell 5.1's ConvertTo-Json right-aligns values into an unreadable mess,
+# and these files get committed and read by people. Re-indent to plain 2-space
+# JSON, but only if the result still parses - never risk mangling a repo's
+# existing settings.
+function Format-Json([string]$json) {
+    $indent = 0
+    $out = ($json -split "`r?`n" | ForEach-Object {
+        $line = $_.Trim()
+        if ($line -match '^[}\]]') { $indent = [Math]::Max(0, $indent - 1) }
+        # 5.1 also pads after the colon: "key":  value -> "key": value
+        $line = $line -replace '^("(?:[^"\\]|\\.)*")\s*:\s+', '$1: '
+        $rendered = (' ' * 2 * $indent) + $line
+        if ($line -match '[{\[]\s*$') { $indent++ }
+        $rendered
+    }) -join "`n"
+
+    try { $null = $out | ConvertFrom-Json; return $out }
+    catch { return $json }
+}
+
 $written = 0; $skipped = 0; $unchanged = 0
 
 foreach ($dir in Get-ChildItem $Root -Directory | Sort-Object Name) {
@@ -103,7 +123,7 @@ foreach ($dir in Get-ChildItem $Root -Directory | Sort-Object Name) {
         $merged['enabledPlugins']         = $desired.enabledPlugins
     }
 
-    $json = ($merged | ConvertTo-Json -Depth 10)
+    $json = Format-Json ($merged | ConvertTo-Json -Depth 10)
 
     if ((Test-Path $settings) -and ((Get-Content $settings -Raw -Encoding UTF8).Trim() -eq $json.Trim())) {
         Write-Host ("  same  {0}" -f $dir.Name) -ForegroundColor DarkGray
