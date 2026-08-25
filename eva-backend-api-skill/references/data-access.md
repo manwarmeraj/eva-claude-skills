@@ -2,6 +2,11 @@
 
 Three mechanisms, one tenancy model, and a schema workflow that lives in a different repo.
 
+> **Repositories return raw shapes.** No `BaseResponse<T>`, no `ResponseType`, no `.Success(...)` /
+> `.Failure(...)` anywhere in this layer — the envelope is built in the Business layer
+> ([`EVA-RSP-007`](rules.md#eva-rsp-007)). Signal "nothing found" with an empty list or `null`, and a
+> failed write with `false` or an affected-row count of `0`. Every example below follows that.
+
 ---
 
 ## 1. Choosing a mechanism
@@ -162,7 +167,11 @@ await _unitOfWork.DataContext.Set<PriceList>()
 
 ### Paging
 
-Paged reads accept `SearchParams` and return `BaseResponse<PaginatedResult<T>>` rather than
+The repository returns the rows and the total count as raw values (a tuple, or an `out`-style pair);
+the **Business layer** wraps them in `BaseResponse<PaginatedResult<T>>`
+([`EVA-RSP-007`](rules.md#eva-rsp-007)).
+
+Paged reads accept `SearchParams` and the Business layer returns `BaseResponse<PaginatedResult<T>>` rather than
 hand-rolled `Skip`/`Take`. `PageSize` is capped at `MaxPageSize = 100` —
 [`EVA-RSP-005`](rules.md#eva-rsp-005).
 

@@ -62,18 +62,16 @@ Contract first: `EVA.Pricing.Repositories/Contracts/IPriceListRepository.cs`
 ```csharp
 public interface IPriceListRepository
 {
-    Task<BaseResponse<List<PriceListModel>>> GetActive();
+    Task<List<PriceListModel>> GetActive();
 }
 ```
 
 Implementation: `EVA.Pricing.Repositories/Repositories/PriceListRepository.cs`
 
 ```csharp
-public async Task<BaseResponse<List<PriceListModel>>> GetActive()
+public async Task<List<PriceListModel>> GetActive()
 {
-    BaseResponse<List<PriceListModel>> response = new();
-
-    var rows = await _unitOfWork.DataContext.Set<PriceList>()
+    return await _unitOfWork.DataContext.Set<PriceList>()
         .AsNoTracking()
         .Where(x => x.IsActive && x.OrgId == _orgId)      // both conditions, always
         .Select(x => new PriceListModel
@@ -83,15 +81,14 @@ public async Task<BaseResponse<List<PriceListModel>>> GetActive()
             IsActive = x.IsActive
         })
         .ToListAsync();
-
-    return response.Success(rows, ResponseType.Common_DataFetchSuccess);
 }
 ```
 
-- Returns `BaseResponse<T>`, never a raw `List<>` / `bool` / entity —
-  [`EVA-RSP-001`](rules.md#eva-rsp-001).
-- Built with `.Success(...)`, never `new BaseResponse<T> { ... }` —
-  [`EVA-RSP-002`](rules.md#eva-rsp-002).
+- Returns the **raw shape** — `List<>`, `bool`, entity, `int`. **Never `BaseResponse<T>`** —
+  [`EVA-RSP-007`](rules.md#eva-rsp-007). The envelope is built one layer up, in step 3.
+- No `ResponseType`, no `.Success(...)` / `.Failure(...)`, no resx codes in this file.
+- Signal "nothing found" with an empty list or `null`, and a failed write with `false` or an
+  affected-row count of `0`. Mapping that to a response code is the Business layer's job.
 - `.AsNoTracking()` on every read.
 - `x.OrgId == _orgId` on every query — [`EVA-SEC-001`](rules.md#eva-sec-001). `_orgId` comes from
   `HttpContext.Items[KeyConstant.AppOrgId]`.
@@ -152,18 +149,28 @@ public class PriceListBusiness : IPriceListBusiness
         if (_orgId <= 0)
             return response.Failure(ResponseType.Err_UnauthorizedAccess);
 
-        return await _priceListRepository.GetActive();
+        var rows = await _priceListRepository.GetActive() ?? new List<PriceListModel>();
+
+        // Read: empty is still success. Never Err_NoRecordFound here.
+        return response.Success(rows, ResponseType.Common_DataFetchSuccess);
     }
 
     #endregion Public Methods
 }
 ```
 
+- **This is the only layer that builds `BaseResponse<T>`** — [`EVA-RSP-001`](rules.md#eva-rsp-001) —
+  and only through `.Success(...)` / `.Failure(...)`, never `new BaseResponse<T> { ... }`
+  ([`EVA-RSP-002`](rules.md#eva-rsp-002)).
+- **A read never fails.** `Get` / `GetAll` / `GetList` / `GetById` always return `.Success(...)`;
+  no rows is a successful empty result — [`EVA-RSP-008`](rules.md#eva-rsp-008). Only
+  `Add` / `Update` / `Delete` may `.Failure(...)`.
 - Plain constructor injection. You will see `IServiceProvider` + `GetRequiredService` in older
   classes; do not copy it into new ones — [`EVA-DI-003`](rules.md#eva-di-003).
 - `_camelCase` private fields ([`EVA-NAM-001`](rules.md#eva-nam-001)), `#region` blocks
   ([`EVA-NAM-007`](rules.md#eva-nam-007)).
-- The `_orgId <= 0` guard is the house pattern for "no tenant context".
+- The `_orgId <= 0` guard is the house pattern for "no tenant context" — and the one case where a
+  read may still return a failure, because the request was never valid.
 - Response codes come from the enum, never from a literal string —
   [`EVA-RSP-003`](rules.md#eva-rsp-003), [`EVA-RSP-004`](rules.md#eva-rsp-004).
 
@@ -304,7 +311,9 @@ connection cannot be resolved and nothing will work.
 - [ ] Route carries the module prefix
 - [ ] `Task<IActionResult>`, `ModelState` guard on writes, `BadRequest` on write failure
 - [ ] Every query and every proc call filters `OrgId`
-- [ ] `BaseResponse<T>` everywhere, built with `.Success(...)` / `.Failure(...)`
+- [ ] `BaseResponse<T>` in the **Business layer only**, built with `.Success(...)` / `.Failure(...)`
+- [ ] Repository returns raw shapes — no `BaseResponse<T>`, no `ResponseType`
+- [ ] Reads (`Get`/`GetAll`/`GetList`) return `.Success(...)` even when empty
 - [ ] No literal user-facing strings — enum member plus resx key, both added
 - [ ] `AddScoped` pair in `DIConfiguration.cs`
 - [ ] No `.Result`, no `.Wait()`, no `Task.Run`, no `async void`, no `new HttpClient()`

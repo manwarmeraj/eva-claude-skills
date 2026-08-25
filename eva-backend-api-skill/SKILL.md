@@ -5,7 +5,7 @@ description: >
   (Controller -> Business -> Repository -> EF Core / Dapper / stored procs).
   Use when writing, reviewing, or debugging C# in any eva-*-api or EVA.*.API
   repository: adding endpoints, Business/Repository methods, models, DI
-  registrations, stored-proc calls, or BaseResponse handling. Encodes the 67
+  registrations, stored-proc calls, or BaseResponse handling. Encodes the 69
   EVA-* rules the PR review bot gates on, and the patterns that must NOT be
   "fixed" because they are intentional.
 ---
@@ -14,7 +14,7 @@ description: >
 
 # EvA backend API standards
 
-The EvA PR review bot enforces 67 rules from `eva-standards.json` on every pull request. This skill
+The EvA PR review bot enforces 69 rules from `eva-standards.json` on every pull request. This skill
 is those rules, moved into the editor so you meet them before the PR, not after it.
 
 ## Am I in scope?
@@ -36,7 +36,7 @@ Controller (thin)  ->  I<X>Business  ->  I<X>Repository  ->  DbContext | IExecut
 Dependencies never flow backwards: a Repository never references the Business project, and neither
 references the API project.
 
-## Ten non-negotiables
+## Eleven non-negotiables
 
 Each is an `Error` that blocks PR approval. The wording matches what the bot will post.
 
@@ -44,22 +44,26 @@ Each is an `Error` that blocks PR approval. The wording matches what the bot wil
    a non-async action. 663 uses, zero exceptions. `EVA-CTL-001`
 2. No business logic in a controller: no `try`/`catch`, no `ILogger`, no `DbContext`, no
    `IRepository`. Exceptions belong to `ErrorHandlingMiddleware`. `EVA-CTL-007`
-3. Every public Business/Repository method returns `BaseResponse<T>` — never a raw entity, DTO,
-   `bool` or `List<>`. `EVA-RSP-001`
+3. **`BaseResponse<T>` lives in the Business layer only.** Every public Business method returns it;
+   a **Repository never does** — repositories return raw shapes (`List<>`, `bool`, `int`, entity).
+   `EVA-RSP-001`, `EVA-RSP-007`
 4. Build it with `.Success(...)` / `.Failure(...)` — never `new BaseResponse<T> { ... }` or direct
    property assignment. `EVA-RSP-002`
-5. No literal user-facing messages and no magic status ints. Text lives in `ResponseMessages.resx`,
+5. **A read never fails.** `Get` / `GetAll` / `GetList` / `GetById` always return `.Success(...)` —
+   no rows is a successful *empty* result, not `Err_NoRecordFound`. Only `Add` / `Update` / `Delete`
+   may `.Failure(...)`. `EVA-RSP-008`
+6. No literal user-facing messages and no magic status ints. Text lives in `ResponseMessages.resx`,
    resolved through the response-code enum. `EVA-RSP-003`, `EVA-RSP-004`
-6. Every EF query and every stored-proc call filters by `OrgId`. The tenant database is chosen per
+7. Every EF query and every stored-proc call filters by `OrgId`. The tenant database is chosen per
    request *and* rows are filtered — both, always. `EVA-SEC-001`, `EVA-SEC-002`
-7. Never add an EF migration. DBAs own the schema, in `eva-tenant-sql` / `eva-database-sql`.
+8. Never add an EF migration. DBAs own the schema, in `eva-tenant-sql` / `eva-database-sql`.
    `EVA-SEC-010`
-8. No `.Result`, no `.Wait()`, no `.GetAwaiter().GetResult()`, no `Task.Run` around sync code, no
+9. No `.Result`, no `.Wait()`, no `.GetAwaiter().GetResult()`, no `Task.Run` around sync code, no
    `async void`, no `new HttpClient()`. `EVA-ASY-001`..`006`
-9. Never swallow a catch silently. Log through `EVA.Logging.Interface.ILogger` —
-   `Error(nameof(Class), nameof(Method), ex.Message, ex.StackTrace)`. `EVA-ERR-001`, `EVA-ERR-003`,
-   `EVA-ERR-004`
-10. Every new `I<X>Business` / `I<X>Repository` needs an `AddScoped` **pair** in
+10. Never swallow a catch silently. Log through `EVA.Logging.Interface.ILogger` —
+    `Error(nameof(Class), nameof(Method), ex.Message, ex.StackTrace)`. `EVA-ERR-001`, `EVA-ERR-003`,
+    `EVA-ERR-004`
+11. Every new `I<X>Business` / `I<X>Repository` needs an `AddScoped` **pair** in
     `API/Infrastructure/DIConfiguration.cs`. This is the most commonly forgotten step — it compiles
     and then throws at runtime. `EVA-DI-001`
 

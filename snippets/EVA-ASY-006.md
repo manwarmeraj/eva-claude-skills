@@ -12,7 +12,7 @@ public class FgIntegrationRepository : IFgIntegrationRepository
         _httpClientFactory = httpClientFactory;
     }
 
-    public async Task<BaseResponse<string>> Push(FgPushModel model)
+    public async Task<string> Push(FgPushModel model)
     {
         var client = _httpClientFactory.CreateClient();
         // ...

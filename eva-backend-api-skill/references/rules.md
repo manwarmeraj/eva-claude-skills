@@ -3,9 +3,9 @@
 <!-- GENERATED FILE - DO NOT EDIT BY HAND. -->
 <!-- Regenerate with sync-rules.ps1. Code examples live in snippets\<RULE-ID>.md. -->
 
-Generated from `eva-standards.json` v1.0.
+Generated from `eva-standards.json` v1.1.
 
-These are the **67 enforced rules** the EvA PR review bot runs on every pull request. It analyses **added and modified lines only** — you are never blamed for code you did not touch.
+These are the **69 enforced rules** the EvA PR review bot runs on every pull request. It analyses **added and modified lines only** — you are never blamed for code you did not touch.
 
 The 5 rules that are deliberately **not** enforced are in [anti-rules.md](anti-rules.md). Read that file before "fixing" anything that looks non-idiomatic.
 
@@ -13,7 +13,7 @@ The 5 rules that are deliberately **not** enforced are in [anti-rules.md](anti-r
 
 | Severity | Effect |
 |---|---|
-| `Error` | Blocks approval. 31 rules. |
+| `Error` | Blocks approval. 33 rules. |
 | `Warning` | Expected to be fixed or justified in the PR. 25 rules. |
 | `Info` | Style nudge. 11 rules. |
 
@@ -47,10 +47,12 @@ The 5 rules that are deliberately **not** enforced are in [anti-rules.md](anti-r
 | [`EVA-CTL-008`](#eva-ctl-008) | Warning | Non-body/header binding |
 | [`EVA-CTL-009`](#eva-ctl-009) | Info | [FromHeader] parameter not camelCase |
 | [`EVA-CTL-010`](#eva-ctl-010) | Info | Non-standard status code |
-| [`EVA-RSP-001`](#eva-rsp-001) | Error | Public Business/Repository method must return BaseResponse<T> |
+| [`EVA-RSP-001`](#eva-rsp-001) | Error | Public Business method must return BaseResponse<T> |
 | [`EVA-RSP-002`](#eva-rsp-002) | Error | Build responses via fluent extensions |
 | [`EVA-RSP-003`](#eva-rsp-003) | Error | Magic status int on response.Code |
 | [`EVA-RSP-004`](#eva-rsp-004) | Error | Literal user-facing message |
+| [`EVA-RSP-007`](#eva-rsp-007) | Error | Repository must not return BaseResponse<T> |
+| [`EVA-RSP-008`](#eva-rsp-008) | Error | Read operation must not return a failure |
 | [`EVA-RSP-005`](#eva-rsp-005) | Warning | Paged endpoint without SearchParams |
 | [`EVA-RSP-006`](#eva-rsp-006) | Warning | New endpoint missing from _endpointResponseMap |
 | [`EVA-ERR-001`](#eva-err-001) | Error | Silent catch |
@@ -350,7 +352,7 @@ public class FgIntegrationRepository : IFgIntegrationRepository
         _httpClientFactory = httpClientFactory;
     }
 
-    public async Task<BaseResponse<string>> Push(FgPushModel model)
+    public async Task<string> Push(FgPushModel model)
     {
         var client = _httpClientFactory.CreateClient();
         // ...
@@ -594,26 +596,41 @@ public async Task<IActionResult> GetList([FromBody] SearchParams searchParams)
 
 > Every public Business/Repository method speaks BaseResponse<T>. Codes come from ResponseMessages.resx, never literals.
 
-### EVA-RSP-001 — Public Business/Repository method must return BaseResponse<T>
+### EVA-RSP-001 — Public Business method must return BaseResponse<T>
 
-**Error.** A public Business/Repository method must return BaseResponse<T> (or Task<BaseResponse<T>>), never a raw entity/DTO/bool/List<>.
+**Error.** A public Business method must return BaseResponse<T> (or Task<BaseResponse<T>>), never a raw entity/DTO/bool/List<>. Repositories are the opposite — see EVA-RSP-007.
 
-*Why:* The envelope carries Code/Success/Message consistently to the client.
+*Why:* The envelope carries Code/Success/Message consistently to the client. The Business layer is the single place it is built.
 
 ```csharp
 // WRONG - the controller cannot tell success from failure, and has no code to return
-public async Task<List<DesignOverrideReasonModel>> GetAll();
-public async Task<bool> Add(DesignOverrideReasonInputModel model);
+public Task<List<PriceListModel>> GetAll();
+public Task<bool> Add(PriceListAddModel model);
 
-// RIGHT
-public async Task<BaseResponse<List<DesignOverrideReasonModel>>> GetAll();
-public async Task<BaseResponse<bool>> Add(DesignOverrideReasonInputModel model);
+// RIGHT - Business layer speaks BaseResponse<T>
+public Task<BaseResponse<List<PriceListModel>>> GetAll();
+public Task<BaseResponse<bool>> Add(PriceListAddModel model);
 ```
 
-This applies to the contract (`I*Business` / `I*Repository`) as well as the
-implementation. Internal private helpers may return whatever is convenient.
+Applies to the contract (`I*Business`) as well as the implementation. Private helpers may return
+whatever is convenient.
 
-<sub>Applies to: `**/*.Business/**/*.cs`, `**/*.Repositories/**/*.cs`, `**/*Business.cs`, `**/*Repository.cs`</sub>
+**The Business layer is the only place the envelope is built.** The Repository underneath returns the
+raw shape — see [`EVA-RSP-007`](#eva-rsp-007) — so a Business method is where a raw `List<>` or
+`bool` becomes a `BaseResponse<T>`:
+
+```csharp
+public async Task<BaseResponse<List<PriceListModel>>> GetAll()
+{
+    BaseResponse<List<PriceListModel>> response = new();
+
+    var rows = await _priceListRepository.GetAll();     // raw List<PriceListModel>
+
+    return response.Success(rows, ResponseType.Common_DataFetchSuccess);
+}
+```
+
+<sub>Applies to: `**/*.Business/**/*.cs`, `**/*Business.cs`</sub>
 
 ### EVA-RSP-002 — Build responses via fluent extensions
 
@@ -645,7 +662,7 @@ public async Task<BaseResponse<bool>> Add(DesignOverrideReasonInputModel inputMo
 }
 ```
 
-<sub>Applies to: `**/*.Business/**/*.cs`, `**/*.Repositories/**/*.cs`, `**/*Business.cs`, `**/*Repository.cs`</sub>
+<sub>Applies to: `**/*.Business/**/*.cs`, `**/*Business.cs`</sub>
 
 ### EVA-RSP-003 — Magic status int on response.Code
 
@@ -653,7 +670,7 @@ public async Task<BaseResponse<bool>> Add(DesignOverrideReasonInputModel inputMo
 
 *Why:* Literal codes bypass the ResponseCode enum and its resx descriptions.
 
-<sub>Applies to: `**/*.Business/**/*.cs`, `**/*.Repositories/**/*.cs`, `**/*Business.cs`, `**/*Repository.cs`, `**/*Controller.cs`</sub>
+<sub>Applies to: `**/*.Business/**/*.cs`, `**/*Business.cs`, `**/*Controller.cs`</sub>
 
 ### EVA-RSP-004 — Literal user-facing message
 
@@ -672,15 +689,123 @@ return response.Failure(ResponseType.Err_DataSaveFailed);
 The enum member name **is** the resx key; `ResponseType.GetDescription()` resolves
 it at serialisation time. Adding a message means adding both, in the same PR.
 
-<sub>Applies to: `**/*.Business/**/*.cs`, `**/*.Repositories/**/*.cs`, `**/*Business.cs`, `**/*Repository.cs`</sub>
+<sub>Applies to: `**/*.Business/**/*.cs`, `**/*Business.cs`</sub>
+
+### EVA-RSP-007 — Repository must not return BaseResponse<T>
+
+**Error.** A Repository method must return the raw shape — an entity, DTO, bool, int or List<> — never BaseResponse<T>. The envelope is built in the Business layer only (EVA-RSP-001).
+
+*Why:* One layer owns the response envelope. A Repository that returns BaseResponse<T> forces the Business layer to unwrap and rewrap it, and pushes response codes into the data layer where they do not belong.
+
+The mirror image of [`EVA-RSP-001`](#eva-rsp-001). The envelope belongs to the Business layer and
+nowhere else.
+
+```csharp
+// WRONG - the Business layer now has to unwrap and rewrap, and response codes
+//         have leaked into the data layer
+public interface IPriceListRepository
+{
+    Task<BaseResponse<List<PriceListModel>>> GetAll();
+    Task<BaseResponse<bool>> Add(PriceListAddModel model);
+}
+
+// RIGHT - raw shapes: entity, DTO, bool, int, List<>
+public interface IPriceListRepository
+{
+    Task<List<PriceListModel>> GetAll();
+    Task<PriceListModel> Get(long priceListId);
+    Task<bool> Add(PriceListAddModel model);
+    Task<bool> Update(PriceListUpdateModel model);
+    Task<bool> Delete(List<long> priceListIds);
+}
+```
+
+The implementation stays plain — no `BaseResponse` local, no `ResponseType`:
+
+```csharp
+public async Task<List<PriceListModel>> GetAll()
+{
+    return await _unitOfWork.DataContext.Set<PriceList>()
+        .AsNoTracking()
+        .Where(x => x.OrgId == _orgId)                  // tenancy is still the repository's job
+        .Select(x => new PriceListModel { /* ... */ })
+        .ToListAsync();
+}
+```
+
+What stays in the repository: `OrgId` filtering, `AsNoTracking`, transactions, proc calls.
+What moves out: `BaseResponse<T>`, `ResponseType`, `.Success(...)` / `.Failure(...)`, resx codes.
+
+A repository signals "nothing found" with an empty list or `null`, and "write failed" with `false` or
+an affected-row count of `0`. The Business layer turns that into a response code.
+
+<sub>Applies to: `**/*.Repositories/**/*.cs`, `**/*.Repository/**/*.cs`, `**/*Repository.cs`, `**/*Repositories.cs`</sub>
+
+### EVA-RSP-008 — Read operation must not return a failure
+
+**Error.** Get/GetAll/GetList/GetById must always return .Success(...) — never .Failure(...). No rows is a successful empty result: return an empty list, or the default/null payload, still with Success. Only writes (Add/Update/Delete) may fail.
+
+*Why:* "No records found" is a normal outcome, not an error. Returning a failure for it makes the Angular client treat an empty grid as a broken call, and is why read endpoints still return Ok(response) (EVA-CTL-006).
+
+"No records found" is a **normal outcome of a successful read**, not an error.
+
+```csharp
+// WRONG - an empty grid now looks like a broken call to the Angular client
+public async Task<BaseResponse<List<PriceListModel>>> GetAll()
+{
+    BaseResponse<List<PriceListModel>> response = new();
+
+    var rows = await _priceListRepository.GetAll();
+
+    if (rows == null || rows.Count == 0)
+        return response.Failure(ResponseType.Err_NoRecordFound);   // no
+
+    return response.Success(rows, ResponseType.Common_DataFetchSuccess);
+}
+
+// RIGHT - empty is still success
+public async Task<BaseResponse<List<PriceListModel>>> GetAll()
+{
+    BaseResponse<List<PriceListModel>> response = new();
+
+    var rows = await _priceListRepository.GetAll() ?? new List<PriceListModel>();
+
+    return response.Success(rows, ResponseType.Common_DataFetchSuccess);
+}
+```
+
+Single-item reads behave the same way — return the default payload, still with success:
+
+```csharp
+public async Task<BaseResponse<PriceListModel>> Get(long priceListId)
+{
+    BaseResponse<PriceListModel> response = new();
+
+    var row = await _priceListRepository.Get(priceListId);         // may be null
+
+    return response.Success(row, ResponseType.Common_DataFetchSuccess);
+}
+```
+
+**Reads:** `Get`, `GetAll`, `GetList`, `GetById` — always `.Success(...)`.
+**Writes:** `Add`, `Update`, `Delete` — may `.Failure(...)`.
+
+This is why the controller returns `Ok(response)` for a read regardless, and `BadRequest(response)`
+only for a failed write — [`EVA-CTL-006`](#eva-ctl-006). The two rules are the same contract seen
+from two layers.
+
+The `_orgId <= 0` guard is the one exception: no tenant context means the request was never valid, so
+a read may still return `.Failure(ResponseType.Err_UnauthorizedAccess)`.
+
+<sub>Applies to: `**/*.Business/**/*.cs`, `**/*Business.cs`</sub>
 
 ### EVA-RSP-005 — Paged endpoint without SearchParams
 
-**Warning.** Manual Skip/Take without SearchParams. Paged reads should return BaseResponse<PaginatedResult<T>> and accept SearchParams (PageSize <= MaxPageSize = 100).
+**Warning.** Manual Skip/Take without SearchParams. Paged reads should return BaseResponse<PaginatedResult<T>> from the Business layer and accept SearchParams (PageSize <= MaxPageSize = 100).
 
 *Why:* Uniform pagination keeps the client grid contract stable.
 
-<sub>Applies to: `**/*.Business/**/*.cs`, `**/*.Repositories/**/*.cs`, `**/*Business.cs`, `**/*Repository.cs`</sub>
+<sub>Applies to: `**/*.Business/**/*.cs`, `**/*Business.cs`</sub>
 
 ### EVA-RSP-006 — New endpoint missing from _endpointResponseMap
 
@@ -688,19 +813,25 @@ it at serialisation time. Adding a message means adding both, in the same PR.
 
 *Why:* The middleware maps endpoints to response codes; unmapped endpoints get a generic failure.
 
-`ErrorHandlingMiddleware` maps an endpoint to the response code its failures should surface. An endpoint missing from the map degrades to `Err_UnhandledException`, so the client sees a generic 1098 instead of the real reason.
+`ErrorHandlingMiddleware` maps a route to the response code its unhandled failures should surface. A route missing from the map falls back to `Err_UnhandledException`, so the client sees a generic code instead of the real reason.
 
 ```csharp
-// EVA.<Domain>.API\Middleware\ErrorHandlingMiddleware.cs
-private static readonly Dictionary<string, ResponseType> _endpointResponseMap = new()
+// EVA.<Domain>.API\Infrastructure\ErrorHandlingMiddleware.cs
+private static readonly Dictionary<string, ResponseCode> _endpointResponseMap = new(StringComparer.OrdinalIgnoreCase)
 {
     // ...existing entries...
-    { "/api/pricing/pricelist/add",    ResponseType.Err_DataSaveFailed },
-    { "/api/pricing/pricelist/getall", ResponseType.Err_DataFetchFailed }
+    { "/api/pricing/PriceList/GetActive", ResponseCode.Err_PriceList_LoadFailed }
 };
 ```
 
-Keys are lowercase and carry the full route including the module prefix. Add an entry whenever the endpoint has a meaningful failure code; skip it only when the generic unhandled code really is the right answer.
+The key is the **full request path including the module prefix**, written the way the route renders
+it — the comparer is `OrdinalIgnoreCase`, so casing is forgiving but the segments must match.
+
+The enum name differs by repo (`ResponseCode` in `eva-crm-api`, `ResponseType` in
+`EVA.FinishedGoods.API`). Read the local one.
+
+Add an entry when the endpoint has a meaningful failure code of its own; skip it when the generic
+unhandled code really is the right answer.
 
 <sub>Applies to: `**/Controllers/**/*.cs`</sub>
 
@@ -959,7 +1090,7 @@ Writing the interface and the class is two thirds of the job. The third part is 
 `EVA.<Domain>.API\Infrastructure\DIConfiguration.cs`:
 
 ```csharp
-public static void CustomDependencies(this IServiceCollection services)
+public static void CustomDependencies(IServiceCollection services)
 {
     // ...existing registrations...
 

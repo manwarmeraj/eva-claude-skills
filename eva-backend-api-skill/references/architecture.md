@@ -30,7 +30,7 @@ HTTP  ->  AuthorizationTokenFilter        global IAsyncAuthorizationFilter: read
           (Business/Contracts, Business/Business/)
             |
             v
-          I<X>Repository -> <X>Repository data access only. No HTTP, no business rules.
+          I<X>Repository -> <X>Repository data access only. Raw shapes, no BaseResponse.
           (Repositories/)
             |
             +--> DbContext            EF Core, via IUnitOfWork
@@ -218,7 +218,27 @@ real token.
 
 ## 8. Responses
 
-Every public Business and Repository method returns `BaseResponse<T>`:
+**The Business layer owns the envelope. The Repository does not.**
+
+| Layer | Returns | Why |
+|---|---|---|
+| Controller | `Task<IActionResult>` wrapping the Business response | `Ok` / `BadRequest` only |
+| Business | `BaseResponse<T>` | the single place the envelope is built ([`EVA-RSP-001`](rules.md#eva-rsp-001)) |
+| Repository | **raw shapes** — `List<>`, `bool`, `int`, entity | no envelope, no response codes ([`EVA-RSP-007`](rules.md#eva-rsp-007)) |
+
+A repository signals "nothing found" with an empty list or `null`, and a failed write with `false` or
+an affected-row count of `0`. Translating that into a response code happens one layer up.
+
+**Reads never fail.** `Get` / `GetAll` / `GetList` / `GetById` always return `.Success(...)` — an
+empty result is a successful read, not `Err_NoRecordFound`
+([`EVA-RSP-008`](rules.md#eva-rsp-008)). Only `Add` / `Update` / `Delete` may `.Failure(...)`. The
+one exception is the `_orgId <= 0` guard: no tenant context means the request was never valid.
+
+This is the same contract the controller expresses from the other side — reads return `Ok(response)`
+regardless, writes return `BadRequest(response)` on failure
+([`EVA-CTL-006`](rules.md#eva-ctl-006)).
+
+The envelope itself:
 
 ```csharp
 public class BaseResponse<T>

@@ -12,7 +12,7 @@ Currently one plugin: **`eva-backend-api`**, the backend API house standards for
 ## What it does
 
 `eva-backend-api-skill` teaches Claude Code how EvA API repos are actually written: the layering, the
-`BaseResponse<T>` envelope, the tenancy rules, the stored-proc conventions — and the 67 `EVA-*` rules
+`BaseResponse<T>` envelope, the tenancy rules, the stored-proc conventions — and the 69 `EVA-*` rules
 that the PR review bot gates on.
 
 The point is timing. Those rules already exist in
@@ -39,7 +39,7 @@ claude plugin install eva-backend-api@eva
 or, if the repo is on GitHub:
 
 ```powershell
-claude plugin marketplace add evaerp/eva-claude-skills
+claude plugin marketplace add manwarmeraj/eva-claude-skills
 claude plugin install eva-backend-api@eva
 ```
 
@@ -112,7 +112,7 @@ eva-claude-skills\
    ├─ SKILL.md                 always loaded: scope, non-negotiables, routing table
    ├─ references\
    │  ├─ architecture.md       layers, repo->module->route registry, DI, tenancy, logging
-   │  ├─ rules.md              GENERATED - the 67 enforced rules
+   │  ├─ rules.md              GENERATED - the 69 enforced rules
    │  ├─ anti-rules.md         the 5 disabled rules + Sonar suppressions: do not "fix" these
    │  ├─ recipe-new-endpoint.md  ten-step walkthrough, rule-annotated
    │  ├─ data-access.md        EF / procs / Dapper, tenancy, the two-repo schema workflow

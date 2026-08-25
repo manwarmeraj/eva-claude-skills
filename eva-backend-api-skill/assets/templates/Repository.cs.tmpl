@@ -1,12 +1,15 @@
 // Template: EVA.{{Domain}}.Repositories/Repositories/{{Entity}}Repository.cs
 //
-// Rules satisfied: EVA-SEC-001/002, EVA-RSP-001/002, EVA-SP-001/002/003,
+// Rules satisfied: EVA-SEC-001/002, EVA-RSP-007, EVA-SP-001/002/003,
 //                  EVA-ERR-007, EVA-NAM-001/007
 //
-// EVERY query and EVERY proc call filters OrgId. Connecting to the right tenant
-// database is NOT a substitute - one tenant DB holds many organisations.
+// NO BaseResponse<T> in this file. Repositories return raw shapes; the Business
+// layer builds the envelope (EVA-RSP-007 / EVA-RSP-001). No ResponseType here
+// either - response codes are not a data-layer concern.
+//
+// EVERY query and EVERY proc call still filters OrgId. Connecting to the right
+// tenant database is NOT a substitute - one tenant DB holds many organisations.
 
-using EVA.{{Domain}}.Common.ResponseMessages;
 using EVA.{{Domain}}.Common.Utilities;
 using EVA.{{Domain}}.DbEntities.Models;
 using EVA.{{Domain}}.Repositories.Common;
@@ -46,12 +49,11 @@ namespace EVA.{{Domain}}.Repositories.Repositories
 
         #region Public Methods
 
-        // EF read: AsNoTracking + OrgId filter.
-        public async Task<BaseResponse<List<{{Entity}}Model>>> GetAll()
+        // EF read: AsNoTracking + OrgId filter. An empty list is a valid result -
+        // do not treat "no rows" as an error anywhere in this file (EVA-RSP-008).
+        public async Task<List<{{Entity}}Model>> GetAll()
         {
-            BaseResponse<List<{{Entity}}Model>> response = new();
-
-            var rows = await _unitOfWork.DataContext.Set<{{Entity}}>()
+            return await _unitOfWork.DataContext.Set<{{Entity}}>()
                 .AsNoTracking()
                 .Where(x => x.OrgId == _orgId)
                 .Select(x => new {{Entity}}Model
@@ -61,15 +63,12 @@ namespace EVA.{{Domain}}.Repositories.Repositories
                     IsActive = x.IsActive
                 })
                 .ToListAsync();
-
-            return response.Success(rows, ResponseType.Common_DataFetchSuccess);
         }
 
-        public async Task<BaseResponse<{{Entity}}Model>> Get(long {{entity}}Id)
+        // Returns null when there is no match. The Business layer still reports success.
+        public async Task<{{Entity}}Model> Get(long {{entity}}Id)
         {
-            BaseResponse<{{Entity}}Model> response = new();
-
-            var row = await _unitOfWork.DataContext.Set<{{Entity}}>()
+            return await _unitOfWork.DataContext.Set<{{Entity}}>()
                 .AsNoTracking()
                 .Where(x => x.{{Entity}}Id == {{entity}}Id && x.OrgId == _orgId)
                 .Select(x => new {{Entity}}Model
@@ -79,19 +78,12 @@ namespace EVA.{{Domain}}.Repositories.Repositories
                     IsActive = x.IsActive
                 })
                 .FirstOrDefaultAsync();
-
-            if (row == null)
-                return response.Failure(ResponseType.Err_NoRecordFound);
-
-            return response.Success(row, ResponseType.Common_DataFetchSuccess);
         }
 
         // EF write: execution strategy + explicit transaction, await Commit().
         // Never call the synchronous SaveChanges() (EVA-ERR-007).
-        public async Task<BaseResponse<bool>> Add({{Entity}}AddModel model)
+        public async Task<bool> Add({{Entity}}AddModel model)
         {
-            BaseResponse<bool> response = new();
-
             var entity = new {{Entity}}
             {
                 Code = model.Code,
@@ -111,18 +103,16 @@ namespace EVA.{{Domain}}.Repositories.Repositories
                 await transaction.CommitAsync();
             });
 
-            return response.Success(true, ResponseType.Common_DataSaveMsg);
+            return true;
         }
 
-        public async Task<BaseResponse<bool>> Update({{Entity}}UpdateModel model)
+        public async Task<bool> Update({{Entity}}UpdateModel model)
         {
-            BaseResponse<bool> response = new();
-
             var entity = await _unitOfWork.DataContext.Set<{{Entity}}>()
                 .FirstOrDefaultAsync(x => x.{{Entity}}Id == model.{{Entity}}Id && x.OrgId == _orgId);
 
             if (entity == null)
-                return response.Failure(ResponseType.Err_NoRecordFound);
+                return false;              // plain bool - the Business layer maps this to a code
 
             entity.Code = model.Code;
             entity.IsActive = model.IsActive;
@@ -138,30 +128,25 @@ namespace EVA.{{Domain}}.Repositories.Repositories
                 await transaction.CommitAsync();
             });
 
-            return response.Success(true, ResponseType.Common_DataUpdateMsg);
+            return true;
         }
 
         // Bulk delete: ExecuteDeleteAsync, still OrgId-scoped.
-        public async Task<BaseResponse<bool>> Delete(List<long> {{entity}}Ids)
+        public async Task<bool> Delete(List<long> {{entity}}Ids)
         {
-            BaseResponse<bool> response = new();
-
             int affected = await _unitOfWork.DataContext.Set<{{Entity}}>()
                 .Where(x => {{entity}}Ids.Contains(x.{{Entity}}Id) && x.OrgId == _orgId)
                 .ExecuteDeleteAsync();
 
-            if (affected == 0)
-                return response.Failure(ResponseType.Err_NoRecordFound);
-
-            return response.Success(true, ResponseType.Common_DataDeleteMsg);
+            return affected > 0;
         }
 
         // Stored proc: name from ProcedureConstants, explicit SqlDbType on every
         // parameter, OrgId always present, output params read defensively.
-        public async Task<BaseResponse<List<{{Entity}}ResultModel>>> GetPaged(int pageNumber, int pageSize)
+        // Total count comes back through an out parameter, so hand it to the
+        // caller rather than stuffing it into a response envelope here.
+        public async Task<(List<{{Entity}}ResultModel> Rows, int TotalCount)> GetPaged(int pageNumber, int pageSize)
         {
-            BaseResponse<List<{{Entity}}ResultModel>> response = new();
-
             var sqlParams = new List<Parameters>()
             {
                 new() { ParameterName = "OrgId",      Value = _orgId,     ParameterType = SqlDbType.BigInt, ParameterDirection = ParameterDirection.Input },
@@ -175,9 +160,7 @@ namespace EVA.{{Domain}}.Repositories.Repositories
 
             int totalCount = (int)((sqlParams.FirstOrDefault(x => x.ParameterName == "TotalCount")?.Value) ?? 0);
 
-            response.RecordsAffected = totalCount;
-
-            return response.Success(rows, ResponseType.Common_DataFetchSuccess);
+            return (rows, totalCount);
         }
 
         #endregion Public Methods

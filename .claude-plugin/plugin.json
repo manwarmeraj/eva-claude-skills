@@ -1,8 +1,8 @@
 {
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "eva-backend-api",
-  "version": "1.0.0",
-  "description": "EvA ERP backend house standards for .NET 10 N-tier APIs. Encodes the 67 EVA-* rules the PR review bot gates on, plus the patterns that must not be 'fixed' because they are intentional.",
+  "version": "1.1.0",
+  "description": "EvA ERP backend house standards for .NET 10 N-tier APIs. Encodes the 69 EVA-* rules the PR review bot gates on, plus the patterns that must not be 'fixed' because they are intentional.",
   "author": {
     "name": "Manwar Meraj",
     "email": "manwarmeraj@evawinoptimize.com"

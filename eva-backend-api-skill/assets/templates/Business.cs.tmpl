@@ -1,6 +1,13 @@
 // Template: EVA.{{Domain}}.Business/Business/{{Entity}}Business.cs
 //
-// Rules satisfied: EVA-RSP-001..004, EVA-ERR-001/003/004, EVA-DI-003, EVA-NAM-001/007
+// Rules satisfied: EVA-RSP-001..004, EVA-RSP-008, EVA-ERR-001/003/004,
+//                  EVA-DI-003, EVA-NAM-001/007
+//
+// This is the ONLY layer that builds BaseResponse<T>. The repository hands back
+// raw shapes (List<>, bool, entity) and this class turns them into an envelope.
+//
+// Reads  (Get/GetAll/GetList) ALWAYS succeed - empty is a valid result.
+// Writes (Add/Update/Delete)  may fail.
 
 using EVA.{{Domain}}.Business.Contracts;
 using EVA.{{Domain}}.Common.ResponseMessages;
@@ -40,16 +47,21 @@ namespace EVA.{{Domain}}.Business.Business
 
         #endregion Constructor
 
-        #region Public Methods
+        #region Read - always Success, never Failure (EVA-RSP-008)
 
         public async Task<BaseResponse<List<{{Entity}}Model>>> GetAll()
         {
             BaseResponse<List<{{Entity}}Model>> response = new();
 
+            // No tenant context means the request was never valid - the one
+            // case where a read may still fail.
             if (_orgId <= 0)
                 return response.Failure(ResponseType.Err_UnauthorizedAccess);
 
-            return await _{{entity}}Repository.GetAll();
+            var rows = await _{{entity}}Repository.GetAll() ?? new List<{{Entity}}Model>();
+
+            // An empty list is a successful read. Do NOT return Err_NoRecordFound.
+            return response.Success(rows, ResponseType.Common_DataFetchSuccess);
         }
 
         public async Task<BaseResponse<{{Entity}}Model>> Get(long {{entity}}Id)
@@ -59,8 +71,14 @@ namespace EVA.{{Domain}}.Business.Business
             if (_orgId <= 0)
                 return response.Failure(ResponseType.Err_UnauthorizedAccess);
 
-            return await _{{entity}}Repository.Get({{entity}}Id);
+            var row = await _{{entity}}Repository.Get({{entity}}Id);   // may be null
+
+            return response.Success(row, ResponseType.Common_DataFetchSuccess);
         }
+
+        #endregion Read
+
+        #region Write - may Failure
 
         public async Task<BaseResponse<bool>> Add({{Entity}}AddModel model)
         {
@@ -69,9 +87,9 @@ namespace EVA.{{Domain}}.Business.Business
             if (_orgId <= 0)
                 return response.Failure(ResponseType.Err_UnauthorizedAccess);
 
-            var result = await _{{entity}}Repository.Add(model);
+            var saved = await _{{entity}}Repository.Add(model);        // raw bool
 
-            if (!result.Success)
+            if (!saved)
                 return response.Failure(ResponseType.Err_DataSaveFailed);
 
             return response.Success(true, ResponseType.Common_DataSaveMsg);
@@ -84,9 +102,9 @@ namespace EVA.{{Domain}}.Business.Business
             if (_orgId <= 0)
                 return response.Failure(ResponseType.Err_UnauthorizedAccess);
 
-            var result = await _{{entity}}Repository.Update(model);
+            var updated = await _{{entity}}Repository.Update(model);
 
-            if (!result.Success)
+            if (!updated)
                 return response.Failure(ResponseType.Err_DataUpdateFailed);
 
             return response.Success(true, ResponseType.Common_DataUpdateMsg);
@@ -99,15 +117,15 @@ namespace EVA.{{Domain}}.Business.Business
             if (_orgId <= 0)
                 return response.Failure(ResponseType.Err_UnauthorizedAccess);
 
-            var result = await _{{entity}}Repository.Delete({{entity}}Ids);
+            var deleted = await _{{entity}}Repository.Delete({{entity}}Ids);
 
-            if (!result.Success)
+            if (!deleted)
                 return response.Failure(ResponseType.Err_DataDeleteFailed);
 
             return response.Success(true, ResponseType.Common_DataDeleteMsg);
         }
 
-        #endregion Public Methods
+        #endregion Write
     }
 }
 
