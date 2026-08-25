@@ -1,0 +1,126 @@
+// Template: EVA.{{Domain}}.API/Controllers/{{Entity}}Controller.cs
+//
+// Placeholders: {{Domain}} = Pricing, {{Entity}} = PriceList, {{module}} = pricing
+// The {{module}} segment is fixed per repo - see references/architecture.md.
+//
+// Rules satisfied: EVA-CTL-001..010, EVA-RSP-006
+
+using EVA.{{Domain}}.Business.Contracts;
+using EVA.{{Domain}}.ViewModel.{{Entity}};
+using Microsoft.AspNetCore.Mvc;
+
+namespace EVA.{{Domain}}.API.Controllers
+{
+    [Route("api/{{module}}/[controller]/[action]")]
+    [ApiController]
+    public class {{Entity}}Controller : ControllerBase
+    {
+        #region Private Variables
+
+        private readonly I{{Entity}}Business _{{entity}}Business;
+
+        #endregion Private Variables
+
+        #region Constructor
+
+        public {{Entity}}Controller(I{{Entity}}Business {{entity}}Business)
+        {
+            _{{entity}}Business = {{entity}}Business;
+        }
+
+        #endregion Constructor
+
+        #region Public Methods
+
+        /// <summary>
+        /// Read. Failures still return Ok with a blanked payload (EVA-CTL-006).
+        /// </summary>
+        [HttpGet]
+        public async Task<IActionResult> GetAll()
+        {
+            var response = await _{{entity}}Business.GetAll();
+
+            return Ok(response);
+        }
+
+        /// <summary>
+        /// Read by id. Scalars bind via [FromHeader], camelCase (EVA-CTL-008, EVA-CTL-009).
+        /// </summary>
+        [HttpGet]
+        public async Task<IActionResult> Get([FromHeader] long {{entity}}Id)
+        {
+            var response = await _{{entity}}Business.Get({{entity}}Id);
+
+            return Ok(response);
+        }
+
+        /// <summary>
+        /// Write. ModelState guard is mandatory (EVA-CTL-004);
+        /// failures return BadRequest (EVA-CTL-006).
+        /// </summary>
+        [HttpPost]
+        public async Task<IActionResult> Add([FromBody] {{Entity}}AddModel model)
+        {
+            if (!ModelState.IsValid)
+            {
+                var errors = string.Join(", ", ModelState.Values
+                    .SelectMany(v => v.Errors)
+                    .Select(e => e.ErrorMessage));
+
+                return BadRequest(errors);
+            }
+
+            var response = await _{{entity}}Business.Add(model);
+
+            if (!response.Success)
+                return BadRequest(response);
+
+            return Ok(response);
+        }
+
+        [HttpPut]
+        public async Task<IActionResult> Update([FromBody] {{Entity}}UpdateModel model)
+        {
+            if (!ModelState.IsValid)
+            {
+                var errors = string.Join(", ", ModelState.Values
+                    .SelectMany(v => v.Errors)
+                    .Select(e => e.ErrorMessage));
+
+                return BadRequest(errors);
+            }
+
+            var response = await _{{entity}}Business.Update(model);
+
+            if (!response.Success)
+                return BadRequest(response);
+
+            return Ok(response);
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> Delete([FromBody] List<long> {{entity}}Ids)
+        {
+            var response = await _{{entity}}Business.Delete({{entity}}Ids);
+
+            if (!response.Success)
+                return BadRequest(response);
+
+            return Ok(response);
+        }
+
+        #endregion Public Methods
+    }
+}
+
+// Not in this file, deliberately:
+//   no try/catch      - ErrorHandlingMiddleware owns exceptions   (EVA-CTL-007)
+//   no ILogger        - logging belongs in the Business layer     (EVA-CTL-007)
+//   no DbContext      - controllers never touch data              (EVA-CTL-007)
+//   no UnitOfWork plumbing, no business rules, no mapping
+//
+// Still to do after copying this file:
+//   1. services.AddScoped<I{{Entity}}Business, {{Entity}}Business>();      (EVA-DI-001)
+//      services.AddScoped<I{{Entity}}Repository, {{Entity}}Repository>();
+//      -> EVA.{{Domain}}.API/Infrastructure/DIConfiguration.cs
+//   2. _endpointResponseMap entries in Infrastructure/ErrorHandlingMiddleware.cs  (EVA-RSP-006)

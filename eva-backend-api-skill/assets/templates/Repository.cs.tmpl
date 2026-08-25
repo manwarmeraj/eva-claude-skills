@@ -1,0 +1,191 @@
+// Template: EVA.{{Domain}}.Repositories/Repositories/{{Entity}}Repository.cs
+//
+// Rules satisfied: EVA-SEC-001/002, EVA-RSP-001/002, EVA-SP-001/002/003,
+//                  EVA-ERR-007, EVA-NAM-001/007
+//
+// EVERY query and EVERY proc call filters OrgId. Connecting to the right tenant
+// database is NOT a substitute - one tenant DB holds many organisations.
+
+using EVA.{{Domain}}.Common.ResponseMessages;
+using EVA.{{Domain}}.Common.Utilities;
+using EVA.{{Domain}}.DbEntities.Models;
+using EVA.{{Domain}}.Repositories.Common;
+using EVA.{{Domain}}.Repositories.Contracts;
+using EVA.{{Domain}}.ViewModel.{{Entity}};
+using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
+using System.Data;
+
+namespace EVA.{{Domain}}.Repositories.Repositories
+{
+    public class {{Entity}}Repository : I{{Entity}}Repository
+    {
+        #region Private Variables
+
+        private readonly IUnitOfWork _unitOfWork;
+        private readonly IExecuterSqlProc _sqlExecuterStoreProc;
+        private readonly IHttpContextAccessor _httpContextAccessor;
+        private readonly int _orgId;
+
+        #endregion Private Variables
+
+        #region Constructor
+
+        public {{Entity}}Repository(
+            IUnitOfWork unitOfWork,
+            IExecuterSqlProc sqlExecuterStoreProc,
+            IHttpContextAccessor httpContextAccessor)
+        {
+            _unitOfWork = unitOfWork;
+            _sqlExecuterStoreProc = sqlExecuterStoreProc;
+            _httpContextAccessor = httpContextAccessor;
+            _orgId = Convert.ToInt32(_httpContextAccessor.HttpContext.Items[KeyConstant.AppOrgId]);
+        }
+
+        #endregion Constructor
+
+        #region Public Methods
+
+        // EF read: AsNoTracking + OrgId filter.
+        public async Task<BaseResponse<List<{{Entity}}Model>>> GetAll()
+        {
+            BaseResponse<List<{{Entity}}Model>> response = new();
+
+            var rows = await _unitOfWork.DataContext.Set<{{Entity}}>()
+                .AsNoTracking()
+                .Where(x => x.OrgId == _orgId)
+                .Select(x => new {{Entity}}Model
+                {
+                    {{Entity}}Id = x.{{Entity}}Id,
+                    Code = x.Code,
+                    IsActive = x.IsActive
+                })
+                .ToListAsync();
+
+            return response.Success(rows, ResponseType.Common_DataFetchSuccess);
+        }
+
+        public async Task<BaseResponse<{{Entity}}Model>> Get(long {{entity}}Id)
+        {
+            BaseResponse<{{Entity}}Model> response = new();
+
+            var row = await _unitOfWork.DataContext.Set<{{Entity}}>()
+                .AsNoTracking()
+                .Where(x => x.{{Entity}}Id == {{entity}}Id && x.OrgId == _orgId)
+                .Select(x => new {{Entity}}Model
+                {
+                    {{Entity}}Id = x.{{Entity}}Id,
+                    Code = x.Code,
+                    IsActive = x.IsActive
+                })
+                .FirstOrDefaultAsync();
+
+            if (row == null)
+                return response.Failure(ResponseType.Err_NoRecordFound);
+
+            return response.Success(row, ResponseType.Common_DataFetchSuccess);
+        }
+
+        // EF write: execution strategy + explicit transaction, await Commit().
+        // Never call the synchronous SaveChanges() (EVA-ERR-007).
+        public async Task<BaseResponse<bool>> Add({{Entity}}AddModel model)
+        {
+            BaseResponse<bool> response = new();
+
+            var entity = new {{Entity}}
+            {
+                Code = model.Code,
+                IsActive = true,
+                OrgId = _orgId                 // stamp the tenant on write, too
+            };
+
+            var strategy = _unitOfWork.DataContext.Database.CreateExecutionStrategy();
+
+            await strategy.ExecuteAsync(async () =>
+            {
+                using var transaction = await _unitOfWork.DataContext.Database.BeginTransactionAsync();
+
+                await _unitOfWork.DataContext.Set<{{Entity}}>().AddAsync(entity);
+                await _unitOfWork.Commit();
+
+                await transaction.CommitAsync();
+            });
+
+            return response.Success(true, ResponseType.Common_DataSaveMsg);
+        }
+
+        public async Task<BaseResponse<bool>> Update({{Entity}}UpdateModel model)
+        {
+            BaseResponse<bool> response = new();
+
+            var entity = await _unitOfWork.DataContext.Set<{{Entity}}>()
+                .FirstOrDefaultAsync(x => x.{{Entity}}Id == model.{{Entity}}Id && x.OrgId == _orgId);
+
+            if (entity == null)
+                return response.Failure(ResponseType.Err_NoRecordFound);
+
+            entity.Code = model.Code;
+            entity.IsActive = model.IsActive;
+
+            var strategy = _unitOfWork.DataContext.Database.CreateExecutionStrategy();
+
+            await strategy.ExecuteAsync(async () =>
+            {
+                using var transaction = await _unitOfWork.DataContext.Database.BeginTransactionAsync();
+
+                await _unitOfWork.Commit();
+
+                await transaction.CommitAsync();
+            });
+
+            return response.Success(true, ResponseType.Common_DataUpdateMsg);
+        }
+
+        // Bulk delete: ExecuteDeleteAsync, still OrgId-scoped.
+        public async Task<BaseResponse<bool>> Delete(List<long> {{entity}}Ids)
+        {
+            BaseResponse<bool> response = new();
+
+            int affected = await _unitOfWork.DataContext.Set<{{Entity}}>()
+                .Where(x => {{entity}}Ids.Contains(x.{{Entity}}Id) && x.OrgId == _orgId)
+                .ExecuteDeleteAsync();
+
+            if (affected == 0)
+                return response.Failure(ResponseType.Err_NoRecordFound);
+
+            return response.Success(true, ResponseType.Common_DataDeleteMsg);
+        }
+
+        // Stored proc: name from ProcedureConstants, explicit SqlDbType on every
+        // parameter, OrgId always present, output params read defensively.
+        public async Task<BaseResponse<List<{{Entity}}ResultModel>>> GetPaged(int pageNumber, int pageSize)
+        {
+            BaseResponse<List<{{Entity}}ResultModel>> response = new();
+
+            var sqlParams = new List<Parameters>()
+            {
+                new() { ParameterName = "OrgId",      Value = _orgId,     ParameterType = SqlDbType.BigInt, ParameterDirection = ParameterDirection.Input },
+                new() { ParameterName = "PageNumber", Value = pageNumber, ParameterType = SqlDbType.Int,    ParameterDirection = ParameterDirection.Input },
+                new() { ParameterName = "PageSize",   Value = pageSize,   ParameterType = SqlDbType.Int,    ParameterDirection = ParameterDirection.Input },
+                new() { ParameterName = "TotalCount", Value = 0,          ParameterType = SqlDbType.Int,    ParameterDirection = ParameterDirection.Output }
+            };
+
+            var rows = await _sqlExecuterStoreProc
+                .ExecuteProcedureAsync<{{Entity}}ResultModel>(ProcedureConstants.sp_Get{{Entity}}List, sqlParams);
+
+            int totalCount = (int)((sqlParams.FirstOrDefault(x => x.ParameterName == "TotalCount")?.Value) ?? 0);
+
+            response.RecordsAffected = totalCount;
+
+            return response.Success(rows, ResponseType.Common_DataFetchSuccess);
+        }
+
+        #endregion Public Methods
+    }
+}
+
+// Reminders:
+//   - sp_Get{{Entity}}List must be added to ProcedureConstants AND the proc itself
+//     written in eva-tenant-sql. There is no automated link between the two.
+//   - Never add an EF migration - DBAs own the schema (EVA-SEC-010).
+//   - A new DbSet<T> needs a Fluent modelBuilder.Entity<T> block (EVA-SP-005).

@@ -1,0 +1,124 @@
+// Template: EVA.{{Domain}}.Business/Business/{{Entity}}Business.cs
+//
+// Rules satisfied: EVA-RSP-001..004, EVA-ERR-001/003/004, EVA-DI-003, EVA-NAM-001/007
+
+using EVA.{{Domain}}.Business.Contracts;
+using EVA.{{Domain}}.Common.ResponseMessages;
+using EVA.{{Domain}}.Common.Utilities;
+using EVA.{{Domain}}.Repositories.Contracts;
+using EVA.{{Domain}}.ViewModel.{{Entity}};
+using EVA.Logging.Interface;              // NOT Microsoft.Extensions.Logging
+using Microsoft.AspNetCore.Http;
+
+namespace EVA.{{Domain}}.Business.Business
+{
+    public class {{Entity}}Business : I{{Entity}}Business
+    {
+        #region Private Variables
+
+        private readonly I{{Entity}}Repository _{{entity}}Repository;
+        private readonly ILogger _logger;
+        private readonly IHttpContextAccessor _httpContextAccessor;
+        private readonly int _orgId;
+
+        #endregion Private Variables
+
+        #region Constructor
+
+        // Explicit constructor injection. Do NOT use IServiceProvider +
+        // GetRequiredService in new classes (EVA-DI-003).
+        public {{Entity}}Business(
+            I{{Entity}}Repository {{entity}}Repository,
+            ILogger logger,
+            IHttpContextAccessor httpContextAccessor)
+        {
+            _{{entity}}Repository = {{entity}}Repository;
+            _logger = logger;
+            _httpContextAccessor = httpContextAccessor;
+            _orgId = Convert.ToInt32(_httpContextAccessor.HttpContext.Items[KeyConstant.AppOrgId]);
+        }
+
+        #endregion Constructor
+
+        #region Public Methods
+
+        public async Task<BaseResponse<List<{{Entity}}Model>>> GetAll()
+        {
+            BaseResponse<List<{{Entity}}Model>> response = new();
+
+            if (_orgId <= 0)
+                return response.Failure(ResponseType.Err_UnauthorizedAccess);
+
+            return await _{{entity}}Repository.GetAll();
+        }
+
+        public async Task<BaseResponse<{{Entity}}Model>> Get(long {{entity}}Id)
+        {
+            BaseResponse<{{Entity}}Model> response = new();
+
+            if (_orgId <= 0)
+                return response.Failure(ResponseType.Err_UnauthorizedAccess);
+
+            return await _{{entity}}Repository.Get({{entity}}Id);
+        }
+
+        public async Task<BaseResponse<bool>> Add({{Entity}}AddModel model)
+        {
+            BaseResponse<bool> response = new();
+
+            if (_orgId <= 0)
+                return response.Failure(ResponseType.Err_UnauthorizedAccess);
+
+            var result = await _{{entity}}Repository.Add(model);
+
+            if (!result.Success)
+                return response.Failure(ResponseType.Err_DataSaveFailed);
+
+            return response.Success(true, ResponseType.Common_DataSaveMsg);
+        }
+
+        public async Task<BaseResponse<bool>> Update({{Entity}}UpdateModel model)
+        {
+            BaseResponse<bool> response = new();
+
+            if (_orgId <= 0)
+                return response.Failure(ResponseType.Err_UnauthorizedAccess);
+
+            var result = await _{{entity}}Repository.Update(model);
+
+            if (!result.Success)
+                return response.Failure(ResponseType.Err_DataUpdateFailed);
+
+            return response.Success(true, ResponseType.Common_DataUpdateMsg);
+        }
+
+        public async Task<BaseResponse<bool>> Delete(List<long> {{entity}}Ids)
+        {
+            BaseResponse<bool> response = new();
+
+            if (_orgId <= 0)
+                return response.Failure(ResponseType.Err_UnauthorizedAccess);
+
+            var result = await _{{entity}}Repository.Delete({{entity}}Ids);
+
+            if (!result.Success)
+                return response.Failure(ResponseType.Err_DataDeleteFailed);
+
+            return response.Success(true, ResponseType.Common_DataDeleteMsg);
+        }
+
+        #endregion Public Methods
+    }
+}
+
+// If you need a try/catch here, this is the shape - catch (Exception ex) is
+// allowed (see references/anti-rules.md); a SILENT catch is not (EVA-ERR-001):
+//
+//     catch (Exception ex)
+//     {
+//         _logger.Error(nameof({{Entity}}Business), nameof(Add), ex.Message, ex.StackTrace);
+//         return response.Failure(ResponseType.Err_UnhandledException);
+//     }
+//
+// Check the ResponseType members above exist in THIS repo's enum and resx -
+// the enum differs by repo (ResponseType vs ResponseCode) and so do its members.

@@ -1,0 +1,26 @@
+// Template: EVA.{{Domain}}.Repositories/Contracts/I{{Entity}}Repository.cs
+//
+// Rules satisfied: EVA-RSP-001
+//
+// Note: many EXISTING repository contracts in the estate return raw types
+// (Task<bool>, Task<List<T>>). New ones return BaseResponse<T> - the bot analyses
+// added lines only, so a new raw-typed method WILL be flagged.
+
+using EVA.{{Domain}}.Common.ResponseMessages;
+using EVA.{{Domain}}.ViewModel.{{Entity}};
+
+namespace EVA.{{Domain}}.Repositories.Contracts
+{
+    public interface I{{Entity}}Repository
+    {
+        Task<BaseResponse<List<{{Entity}}Model>>> GetAll();
+
+        Task<BaseResponse<{{Entity}}Model>> Get(long {{entity}}Id);
+
+        Task<BaseResponse<bool>> Add({{Entity}}AddModel model);
+
+        Task<BaseResponse<bool>> Update({{Entity}}UpdateModel model);
+
+        Task<BaseResponse<bool>> Delete(List<long> {{entity}}Ids);
+    }
+}

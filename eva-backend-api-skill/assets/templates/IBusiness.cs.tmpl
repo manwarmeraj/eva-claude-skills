@@ -1,0 +1,24 @@
+// Template: EVA.{{Domain}}.Business/Contracts/I{{Entity}}Business.cs
+//
+// Rules satisfied: EVA-RSP-001, EVA-NAM-002
+// Deliberately absent: the Async suffix (EVA-NAM-003) and CancellationToken (EVA-NAM-004)
+//                      - both are intentionally NOT used in EvA.
+
+using EVA.{{Domain}}.Common.ResponseMessages;
+using EVA.{{Domain}}.ViewModel.{{Entity}};
+
+namespace EVA.{{Domain}}.Business.Contracts
+{
+    public interface I{{Entity}}Business
+    {
+        Task<BaseResponse<List<{{Entity}}Model>>> GetAll();
+
+        Task<BaseResponse<{{Entity}}Model>> Get(long {{entity}}Id);
+
+        Task<BaseResponse<bool>> Add({{Entity}}AddModel model);
+
+        Task<BaseResponse<bool>> Update({{Entity}}UpdateModel model);
+
+        Task<BaseResponse<bool>> Delete(List<long> {{entity}}Ids);
+    }
+}
