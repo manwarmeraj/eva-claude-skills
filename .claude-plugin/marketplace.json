@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "eva",
+  "description": "Claude Code skills for EvA ERP engineering. Currently one plugin: the backend API house standards used by every eva-*-api and EVA.*.API repository.",
+  "owner": {
+    "name": "Manwar Meraj",
+    "email": "manwarmeraj@evawinoptimize.com"
+  },
+  "plugins": [
+    {
+      "name": "eva-backend-api",
+      "source": "./",
+      "description": "EvA ERP backend house standards for .NET 10 N-tier APIs (Controller -> Business -> Repository). The 67 EVA-* rules the PR review bot gates on, plus the intentional patterns that must not be 'fixed'."
+    }
+  ]
+}
