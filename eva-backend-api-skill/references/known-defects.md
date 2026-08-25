@@ -83,6 +83,19 @@ The same applies to `EVA.Logging`: a fix to one copy does not propagate to the o
 
 ---
 
+## `eva-pricing-api` — wrong layer builds the envelope
+
+Verified in the current tree. Do not take this repo's response handling as the pattern:
+
+| What it does | Where | The rule |
+|---|---|---|
+| Controller constructs the envelope: `var refreshQpeResponse = new BaseResponse<bool>();` | `EVA.Pricing.API/Controllers/PricingController.cs:29`, `:63` | Controllers never build one, and nobody uses `new BaseResponse<T>` — [`EVA-RSP-002`](rules.md#eva-rsp-002), [`EVA-CTL-007`](rules.md#eva-ctl-007) |
+| Business methods return raw shapes: `Task<List<PriceElementDetailsModel<TKey>>> GetPriceElementsAsync(...)` | `EVA.Pricing.Business/Contracts/*.cs` | Business always returns `BaseResponse<T>` — [`EVA-RSP-001`](rules.md#eva-rsp-001) |
+| `Async` suffixes on many of those same methods | same | House style has no suffix — [anti-rules.md](anti-rules.md) |
+
+The correct split is Repository → raw, Business → `BaseResponse<T>`, Controller → pass through. New
+code in this repo follows that, even though the file next to it does not.
+
 ## Estate-level inconsistencies
 
 Facts about the codebase, not bugs to fix in a feature PR — but worth knowing before you generalise

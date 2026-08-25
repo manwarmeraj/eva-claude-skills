@@ -27,6 +27,24 @@ project — the fingerprint of the template every EvA service was cloned from.
 
 If the repo is out of scope, say so and do not apply these rules to it.
 
+## When the surrounding code disagrees with these rules
+
+**The rules win for new code.** Do not infer the standard from the file you happen to be editing.
+
+Large parts of the estate predate these rules and contradict them — `eva-pricing-api` has Business
+methods returning raw `List<>` and a controller that does `new BaseResponse<bool>()`;
+`EVA.Template.API` is worse. Matching the neighbouring file feels safe and produces exactly the code
+the PR bot blocks.
+
+The bot analyses **added and modified lines only**, so:
+
+- **New code follows the rules**, even in a file where nothing else does.
+- **Existing lines are left alone** — no drive-by rewrites of code you were not asked to touch.
+- If a rule and the local code disagree, say so in your reply rather than silently picking one.
+
+The exceptions are in `references/anti-rules.md` — patterns that look wrong and are deliberate. Those
+you *do* match.
+
 ## The shape of every request
 
 ```
