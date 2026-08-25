@@ -31,6 +31,7 @@ If the repo is out of scope, say so and do not apply these rules to it.
 
 ```
 Controller (thin)  ->  I<X>Business  ->  I<X>Repository  ->  DbContext | IExecuterSqlProc  ->  SQL Server
+   IActionResult      BaseResponse<T>      raw List<>/bool/entity
 ```
 
 Dependencies never flow backwards: a Repository never references the Business project, and neither
@@ -44,9 +45,16 @@ Each is an `Error` that blocks PR approval. The wording matches what the bot wil
    a non-async action. 663 uses, zero exceptions. `EVA-CTL-001`
 2. No business logic in a controller: no `try`/`catch`, no `ILogger`, no `DbContext`, no
    `IRepository`. Exceptions belong to `ErrorHandlingMiddleware`. `EVA-CTL-007`
-3. **`BaseResponse<T>` lives in the Business layer only.** Every public Business method returns it;
-   a **Repository never does** — repositories return raw shapes (`List<>`, `bool`, `int`, entity).
-   `EVA-RSP-001`, `EVA-RSP-007`
+3. **Exactly one layer builds `BaseResponse<T>`: Business.** `EVA-RSP-001`, `EVA-RSP-007`
+
+   | Layer | Returns |
+   |---|---|
+   | Controller | `Task<IActionResult>` — passes the Business response through to `Ok` / `BadRequest`. Never constructs one. |
+   | **Business** | **`BaseResponse<T>`** — every public method, always. |
+   | Repository | raw shapes — `List<>`, `bool`, `int`, entity. **Never `BaseResponse<T>`.** |
+
+   The repository hands up a raw `List<>` or `bool`; the Business method wraps it and returns
+   `BaseResponse<T>`; the controller just chooses the status code.
 4. Build it with `.Success(...)` / `.Failure(...)` — never `new BaseResponse<T> { ... }` or direct
    property assignment. `EVA-RSP-002`
 5. **A read never fails.** `Get` / `GetAll` / `GetList` / `GetById` always return `.Success(...)` —
