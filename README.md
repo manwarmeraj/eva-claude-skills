@@ -4,94 +4,157 @@ Claude Code skills for EvA ERP engineering.
 
 **Author:** Manwar Meraj
 
-Currently one plugin: **`eva-backend-api`**, the backend API house standards for every
-`eva-*-api` and `EVA.*.API` repository.
+One plugin: **`eva-backend-api`** — the backend API house standards for every `eva-*-api` and
+`EVA.*.API` repository.
 
 ---
 
-## What it does
+## For developers
 
-`eva-backend-api-skill` teaches Claude Code how EvA API repos are actually written: the layering, the
-`BaseResponse<T>` envelope, the tenancy rules, the stored-proc conventions — and the 69 `EVA-*` rules
-that the PR review bot gates on.
-
-The point is timing. Those rules already exist in
-`eva-code-review-mcp-server/Standards/eva-standards.json`, but only the bot can read them, so a
-developer learns a rule *after* opening a PR. This skill moves them into the editor.
-
-It also records the patterns that look wrong but are **intentional** — no `Async` suffix, no
-`CancellationToken`, `catch (Exception)`, `sp_PascalCase` — so nobody wastes a review cycle
-"fixing" them.
-
-Cost: ~205 tokens always-on, ~3k when it fires.
-
----
-
-## Install (developers)
-
-Two commands. Ask your lead which source line to use.
-
-```powershell
-claude plugin marketplace add \\<fileserver>\<share>\eva-claude-skills
-claude plugin install eva-backend-api@eva
-```
-
-or, if the repo is on GitHub:
+Two commands, once per machine. Not per repo.
 
 ```powershell
 claude plugin marketplace add manwarmeraj/eva-claude-skills
 claude plugin install eva-backend-api@eva
 ```
 
-Then start a **new** Claude Code session in any EvA API repo. The skill loads automatically — you
-never invoke it by name.
+Then **restart Claude Code** and open any EvA API repo.
 
-Check it worked:
+There is nothing to type after that. No skill name to remember, no command to invoke — it loads by
+itself whenever you touch C# in an in-scope repository.
+
+### Check it worked
 
 ```powershell
-claude plugin list
+claude plugin list                          # want: eva-backend-api@eva ... enabled
+claude plugin details eva-backend-api@eva   # want: Skills (1) eva-backend-api-skill
 ```
 
-### Which source to use
+Or ask Claude directly, inside an EvA repo: *"Is a skill named eva-backend-api-skill available to
+you right now?"*
 
-| Source | Behaviour | Use when |
-|---|---|---|
-| **Network share / folder path** | Referenced **in place** — nothing is copied. Edits to the share are live for everyone on their next session, with no re-install. | No git. Everyone is on the LAN or VPN. |
-| **GitHub repo** | Cloned to `~\.claude\plugins\marketplaces\eva`. Works offline. Update with `claude plugin marketplace update eva`. | The repo is hosted and devs work off-network. |
+### Keeping it current
 
-The share route trades offline access for zero-effort updates. If a dev is off VPN, a share-sourced
-marketplace is unreachable and the skill will not load.
+The plugin is a local clone and **does not auto-update**. When the standards change:
+
+```powershell
+claude plugin marketplace update eva
+claude plugin update eva-backend-api@eva
+```
+
+Without those, you silently keep the version you installed.
 
 ### No Claude CLI on PATH?
 
 `dist\EvA-Backend-Skill-Installer.md` is a single self-contained file — mail or Teams it, and the
-recipient either hands it to Claude Code or pastes the PowerShell block inside it. Slower to update
-(you must re-send after every change), so prefer a marketplace where you can.
+recipient either hands it to Claude Code or pastes the PowerShell block inside it. Slower to update,
+so prefer the marketplace where you can.
 
 ---
 
-## Update (maintainer)
+## What the skill covers
 
-The rule reference is generated, not hand-written. After anyone edits `eva-standards.json`:
+The 69 enforced `EVA-*` rules from `eva-standards.json` — the same file the PR review bot reads, so
+the two cannot drift apart. It analyses **added and modified lines only**, so you are never blamed
+for code you did not touch.
+
+| Severity | Count | Effect |
+|---|---|---|
+| `Error` | 33 | Blocks PR approval |
+| `Warning` | 25 | Fix it or justify it |
+| `Info` | 11 | Style nudge |
+
+The point is timing. These rules already existed, but only the bot could read them — so a developer
+learned a rule *after* opening a PR. The skill moves them into the editor.
+
+The headline convention, and the one people get wrong most often:
+
+| Layer | Returns |
+|---|---|
+| Controller | `Task<IActionResult>` — passes the Business response through to `Ok` / `BadRequest`. Never constructs one. |
+| **Business** | **`BaseResponse<T>`** — every public method, always. Built with `.Success(...)` / `.Failure(...)`. |
+| Repository | raw shapes — `List<>`, `bool`, `int`, entity. **Never `BaseResponse<T>`.** |
+
+Reads never fail: `Get` / `GetAll` / `GetList` / `GetById` always return `.Success(...)`. No rows is
+a successful *empty* result, not `Err_NoRecordFound`. Only writes may fail.
+
+It equally records the patterns that are **intentional** and must not be "fixed" — no `Async` suffix,
+no `CancellationToken`, `catch (Exception)`, `sp_PascalCase`, both namespace styles. See
+`references/anti-rules.md`.
+
+Cost: ~205 tokens always-on, ~3k when it fires.
+
+### What it does not do
+
+**It does not replace review.** It moves the default much closer to house style; it does not
+guarantee correct output. Where existing code contradicts a rule, Claude sometimes mirrors the file
+next to it — observed on Business-layer return types in the older repos. **When the skill and the PR
+bot disagree, the bot wins.**
+
+It does not invent tests either. `eva-wms-api` is the only in-scope repo with a test project;
+everywhere else `dotnet test` is a no-op.
+
+---
+
+## Scope
+
+**Covered:** every repo with an `EVA.<Domain>.Business` + `EVA.<Domain>.Repositories` pair.
+
+**Not covered:** `eva-eims-api`, `eva-survey-app`, `eva-sql-manager`, `eva-perf-profiler`,
+`eva-api-debugger`, `eva-api-gateway`.
+
+---
+
+## For maintainers
+
+### Changing a rule
+
+`eva-standards.json` in `eva-code-review-mcp-server` is the single source of truth. Edit it there so
+the bot and the skill change together — never edit `references/rules.md` by hand, it is generated.
 
 ```powershell
 .\sync-rules.ps1        # regenerate eva-backend-api-skill\references\rules.md
 .\verify-parity.ps1     # must print PASS
-.\make-installer.ps1    # only if you also distribute the single-file installer
+claude plugin validate . --strict
 ```
 
-Then bump `version` in `.claude-plugin\plugin.json` and publish (push, or copy to the share).
+Then bump `version` in `.claude-plugin\plugin.json`, commit, push, and tell the team to run the two
+update commands above.
 
-- **Share-sourced** devs pick it up on their next session automatically.
-- **GitHub-sourced** devs run `claude plugin marketplace update eva`.
-
-`sync-rules.ps1` expects `eva-code-review-mcp-server` to be cloned as a sibling of this folder. Pass
-`-StandardsPath` if yours lives elsewhere.
+`sync-rules.ps1` expects `eva-code-review-mcp-server` cloned as a sibling of this folder; pass
+`-StandardsPath` otherwise.
 
 Hand-written code examples live in `snippets\<RULE-ID>.md` and are merged into `rules.md` at
-generation time — regenerating never destroys them. To improve an example, edit the snippet and
-re-run `sync-rules.ps1`. To change *rule wording*, edit `eva-standards.json`, so the bot and the
-skill change together.
+generation time, so regenerating never destroys them.
+
+### Rolling out per repo
+
+`rollout-to-repos.ps1` writes `.claude\settings.json` into every in-scope EvA repo, declaring the
+marketplace and enabling the plugin, so the requirement travels with the repo:
+
+```powershell
+.\rollout-to-repos.ps1 -WhatIf     # 33 repos targeted
+.\rollout-to-repos.ps1
+```
+
+It merges into an existing `settings.json` rather than clobbering it, writes UTF-8 **without** BOM
+(a BOM breaks the settings parser), skips out-of-scope repos, and refuses any repo where `.claude\`
+is gitignored. It never stages or commits — the repos sit on feature branches with dirty trees, so
+review and commit them yourself.
+
+Caveat worth knowing: a committed `settings.json` declares the *source*. It was not observed to
+install the plugin on its own through any CLI path tested, so keep the two install commands in
+onboarding until someone confirms otherwise on a clean machine.
+
+### Scripts
+
+| Script | Purpose |
+|---|---|
+| `sync-rules.ps1` | Regenerate `references/rules.md` from `eva-standards.json` |
+| `verify-parity.ps1` | Regression test — rule parity, secret scan, scope. Run before publishing. |
+| `rollout-to-repos.ps1` | Write `.claude/settings.json` into every in-scope repo |
+| `make-installer.ps1` | Pack the skill into one mailable `.md` (gated on `verify-parity`) |
+| `install.ps1` | Manual copy into `~\.claude\skills` — fallback, pre-dates the plugin route |
 
 ---
 
@@ -102,10 +165,11 @@ eva-claude-skills\
 ├─ .claude-plugin\
 │  ├─ marketplace.json         marketplace manifest ("eva")
 │  └─ plugin.json              plugin manifest ("eva-backend-api")
-├─ sync-rules.ps1              regenerate rules.md from eva-standards.json
-├─ verify-parity.ps1           regression test (run before publishing)
-├─ make-installer.ps1          pack everything into one mailable .md
-├─ install.ps1                 manual copy into ~\.claude\skills (fallback)
+├─ sync-rules.ps1
+├─ verify-parity.ps1
+├─ rollout-to-repos.ps1
+├─ make-installer.ps1
+├─ install.ps1
 ├─ snippets\                   hand-written code examples, merged into rules.md
 ├─ dist\                       generated single-file installer
 └─ eva-backend-api-skill\
@@ -127,11 +191,6 @@ that way when adding content.
 
 ## Verification
 
-```powershell
-.\verify-parity.ps1                       # rule parity + secret scan + scope
-claude plugin validate . --strict         # manifests
-```
-
 `verify-parity.ps1` fails if:
 
 - an enabled rule is missing from `rules.md`, or a disabled one is missing from `anti-rules.md`
@@ -144,26 +203,15 @@ claude plugin validate . --strict         # manifests
 The secret check is not decoration: the skill teaches `EVA-SEC-006`, so it must not contain a
 credential itself — not even as an illustrative example. Use obvious placeholders.
 
-`make-installer.ps1` refuses to package unless `verify-parity.ps1` passes.
-
----
-
-## Scope
-
-**Covered:** every repo with an `EVA.<Domain>.Business` + `EVA.<Domain>.Repositories` pair.
-
-**Not covered:** `eva-eims-api`, `eva-survey-app`, `eva-sql-manager`, `eva-perf-profiler`,
-`eva-api-debugger`, `eva-api-gateway`.
-
 ---
 
 ## Contributing
 
 - New rule, or changed wording → edit `eva-standards.json`, then `sync-rules.ps1`.
 - Better example for an existing rule → edit `snippets\<RULE-ID>.md`, then `sync-rules.ps1`.
-- New defect discovered → add it to `known-defects.md` with the file, the line, and what the correct
-  pattern is. It is only useful while it stays specific.
-- A junior hit something this skill did not answer → that question is the backlog. Add the answer to
-  the reference file it belongs in.
+- New defect discovered → add it to `known-defects.md` with the file, the line, and the correct
+  pattern. It is only useful while it stays specific.
+- A developer hit something the skill did not answer, or answered wrongly → that is the backlog. Add
+  the answer to the reference file it belongs in.
 
 Run `verify-parity.ps1` and `claude plugin validate . --strict` before publishing.
